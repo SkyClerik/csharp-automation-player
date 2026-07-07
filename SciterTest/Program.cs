@@ -2,10 +2,8 @@
 using Microsoft.CodeAnalysis.CSharp.Scripting;
 using Microsoft.CodeAnalysis.Scripting;
 using Microsoft.CSharp.RuntimeBinder;
-using Microsoft.Win32;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
-using System.Runtime.Versioning;
 
 public class ScriptGlobals
 {
@@ -15,7 +13,9 @@ public class ScriptGlobals
 public class Program
 {
     private static SciterAPIHost? _host;
-    public static nint MainWindowHandle { get; private set; }
+
+    [DllImport("libdl.so", EntryPoint = "dlopen")]
+    private static extern IntPtr LinuxDlOpen(string filename, int flags);
 
     [DllImport("kernel32.dll", CharSet = CharSet.Auto, SetLastError = true)]
     private static extern bool SetDllDirectory(string lpPathName);
@@ -31,29 +31,100 @@ public class Program
     private const uint MB_ICONQUESTION = 0x00000020;
     private const uint MB_ICONINFORMATION = 0x00000040;
     private const int IDYES = 6;
+    private const int RTLD_NOW = 2;
+
+    public static readonly ManualResetEventSlim CompletionLock = new(false);
+
+    public static nint MainWindowHandle { get; private set; }
 
     [STAThread]
     static async Task Main(string[] args)
     {
+        Directory.SetCurrentDirectory(AppContext.BaseDirectory);
+
         if (args.Length == 0)
         {
             RunInstaller();
             return;
         }
 
-        string scriptPath = args[0];
+        // Если аргумент один (как в Win) — берем его. Если больше (Linux разбил пробелы) — склеиваем.
+        string scriptPath = args.Length == 1 ? args[0] : string.Join(" ", args);
+        scriptPath = scriptPath.Trim('"', '\''); // Чистим от случайных кавычек по краям
+
         var api = await ExecuteUserScriptAsync(scriptPath);
 
         if (api != null)
-            InitializeUserInterface(scriptPath, api);
+        {
+            try
+            {
+                InitializeUserInterface(scriptPath, api);
+            }
+            catch (Exception ex)
+            {
+                // Держим терминал, если упадет инициализация Sciter
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine($"\n❌ Ошибка инициализации GUI Sciter:\n{ex.Message}\n{ex.StackTrace}");
+                Console.ResetColor();
+                Console.WriteLine("\n=== Терминал зафиксирован. Нажмите любую клавишу... ===");
+                Console.ReadKey();
+            }
+        }
     }
 
     private static void RunInstaller()
     {
+        IAssociationManager manager;
+        string platformName;
+
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-            RunWindowsInstallerMenu();
+        {
+            manager = new WindowsAssociationManager();
+            platformName = "Windows (Registry)";
+        }
         else
-            RunLinuxInstallerMenu();
+        {
+            manager = new LinuxAssociationManager();
+            platformName = "Linux (XDG MIME)";
+        }
+
+        while (true)
+        {
+            Console.Clear();
+            Console.ForegroundColor = ConsoleColor.Cyan;
+            Console.WriteLine("========================================");
+            Console.WriteLine($"     C# Script Player Setup ({platformName})");
+            Console.WriteLine("========================================");
+            Console.ResetColor();
+            Console.WriteLine($"\nТекущий путь: {Environment.ProcessPath}");
+            Console.WriteLine("\n1. Установить / Обновить ассоциацию файла .csx");
+            Console.WriteLine("2. Удалить ассоциацию из системы");
+            Console.WriteLine("3. Выход");
+            Console.Write("\nВаш выбор: ");
+
+            string? choice = Console.ReadLine();
+            if (choice == "1")
+            {
+                manager.ApplyAssociation();
+            }
+            else if (choice == "2")
+            {
+                manager.RemoveAssociation();
+                if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+                {
+                    Console.ForegroundColor = ConsoleColor.Green;
+                    Console.WriteLine("\n[Успех] Все упоминания и ветки реестра успешно удалены.");
+                }
+            }
+            else if (choice == "3")
+            {
+                break;
+            }
+
+            Console.ResetColor();
+            Console.WriteLine("\nНажмите любую клавишу для продолжения...");
+            Console.ReadKey();
+        }
     }
 
     private static async Task<AppApi?> ExecuteUserScriptAsync(string scriptPath)
@@ -107,15 +178,8 @@ public class Program
         }
     }
 
-    private static readonly ManualResetEventSlim CompletionLock = new(false);
-
     private static void InitializeUserInterface(string scriptPath, AppApi api)
     {
-        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-        {
-            SetDllDirectory(AppContext.BaseDirectory);
-        }
-
         _host = new SciterAPIHost(AppContext.BaseDirectory);
         _host.CreateWindow(asMain: true);
         MainWindowHandle = _host.MainWindow;
@@ -167,94 +231,6 @@ public class Program
             _host!.LoadFile(finalHtmlPath);
         else
             _host!.LoadHtml("<meta charset=\"utf-8\"><html><body style='background:#222;color:#fff;text-align:center;padding:50px;'><h1>Ошибка: ui.html не найден!</h1></body></html>");
-    }
-
-    [SupportedOSPlatform("windows")]
-    private static void RunWindowsInstallerMenu()
-    {
-        while (true)
-        {
-            Console.Clear();
-            Console.ForegroundColor = ConsoleColor.Cyan;
-            Console.WriteLine("========================================");
-            Console.WriteLine("     C# Script Player Integration       ");
-            Console.WriteLine("========================================");
-            Console.ResetColor();
-            Console.WriteLine($"\nТекущий путь: {Environment.ProcessPath}");
-            Console.WriteLine("\n1. Установить / Обновить ассоциацию .csx");
-            Console.WriteLine("2. Удалить ассоциацию (Очистить реестр)");
-            Console.WriteLine("3. Выход");
-            Console.Write("\nВаш выбор: ");
-
-            string? choice = Console.ReadLine();
-            if (choice == "1") ApplyWindowsAssociation();
-            else if (choice == "2") RemoveWindowsAssociationWithFeedback();
-            else if (choice == "3") break;
-
-            Console.ResetColor();
-            Console.WriteLine("\nНажмите любую клавишу для продолжения...");
-            Console.ReadKey();
-        }
-    }
-
-    [SupportedOSPlatform("windows")]
-    private static void ApplyWindowsAssociation()
-    {
-        try
-        {
-            string? currentExe = Environment.ProcessPath;
-            if (string.IsNullOrEmpty(currentExe))
-            {
-                currentExe = Path.Combine(AppContext.BaseDirectory, AppDomain.CurrentDomain.FriendlyName + ".exe");
-            }
-
-            RemoveWindowsAssociation();
-
-            using (var key = Registry.ClassesRoot.CreateSubKey(".csx")) key.SetValue("", "CSharpScriptAutomation");
-            using (var key = Registry.ClassesRoot.CreateSubKey(@"CSharpScriptAutomation\shell\Run"))
-            {
-                key.SetValue("", "Запустить в C# Плеере");
-                using (var commandKey = key.CreateSubKey("command")) commandKey.SetValue("", $"\"{currentExe}\" \"%1\"");
-            }
-            Console.ForegroundColor = ConsoleColor.Green;
-            Console.WriteLine("\n[Успех] Ассоциация успешно обновлена под текущий путь!");
-        }
-        catch (UnauthorizedAccessException) { ShowAdminError(); }
-        catch (Exception ex) { Console.WriteLine($"\nОшибка: {ex.Message}"); }
-    }
-
-    [SupportedOSPlatform("windows")]
-    private static void RemoveWindowsAssociationWithFeedback()
-    {
-        try
-        {
-            RemoveWindowsAssociation();
-            Console.ForegroundColor = ConsoleColor.Green;
-            Console.WriteLine("\n[Успех] Все упоминания и ветки реестра успешно удалены.");
-        }
-        catch (UnauthorizedAccessException) { ShowAdminError(); }
-        catch (Exception ex) { Console.WriteLine($"\nОшибка: {ex.Message}"); }
-    }
-
-    [SupportedOSPlatform("windows")]
-    private static void RemoveWindowsAssociation()
-    {
-        if (Registry.ClassesRoot.OpenSubKey(".csx") != null) Registry.ClassesRoot.DeleteSubKeyTree(".csx", false);
-        if (Registry.ClassesRoot.OpenSubKey("CSharpScriptAutomation") != null) Registry.ClassesRoot.DeleteSubKeyTree("CSharpScriptAutomation", false);
-    }
-
-    private static void ShowAdminError()
-    {
-        Console.ForegroundColor = ConsoleColor.Red;
-        Console.WriteLine("\n[Ошибка] Недостаточно прав! Запустите от имени АДМИНИСТРАТОРА.");
-    }
-
-    private static void RunLinuxInstallerMenu()
-    {
-        Console.Clear();
-        Console.WriteLine("=== Linux Integration ===");
-        Console.WriteLine("Интеграция выполняется копированием бинарника в /usr/local/bin/");
-        Console.ReadKey();
     }
 
     public static void Alert(string message, string title)
@@ -354,15 +330,15 @@ public class Program
         }
     }
 
-    public static void RunProcess(string filename)
-    {
-        try
-        {
-            using var proc = Process.Start(new ProcessStartInfo { FileName = filename, UseShellExecute = true });
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"[Player Error] Сбой запуска процесса {filename}: {ex.Message}");
-        }
-    }
+    //public static void RunProcess(string filename)
+    //{
+    //    try
+    //    {
+    //        using var proc = Process.Start(new ProcessStartInfo { FileName = filename, UseShellExecute = true });
+    //    }
+    //    catch (Exception ex)
+    //    {
+    //        Console.WriteLine($"[Player Error] Сбой запуска процесса {filename}: {ex.Message}");
+    //    }
+    //}
 }
