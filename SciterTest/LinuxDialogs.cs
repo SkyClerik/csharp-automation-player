@@ -20,7 +20,8 @@ public static class LinuxDialogs
             };
 
             using var process = Process.Start(startInfo);
-            if (process == null) return string.Empty;
+            if (process == null) 
+                return string.Empty;
 
             string result = process.StandardOutput.ReadToEnd().Trim();
             process.WaitForExit();

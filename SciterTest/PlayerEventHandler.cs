@@ -1,13 +1,11 @@
-﻿using System;
-using EmptyFlow.SciterAPI;
+﻿using EmptyFlow.SciterAPI;
 
 public class PlayerEventHandler : SciterEventHandler
 {
     private readonly SciterAPIHost _host;
     private readonly AppApi _api;
 
-    public PlayerEventHandler(nint window, SciterAPIHost host, AppApi api)
-        : base(window, host, SciterEventHandlerMode.Window)
+    public PlayerEventHandler(nint window, SciterAPIHost host, AppApi api) : base(window, host, SciterEventHandlerMode.Window)
     {
         _host = host;
         _api = api;
@@ -15,6 +13,12 @@ public class PlayerEventHandler : SciterEventHandler
 
     public override void BehaviourEvent(BehaviourEvents cmd, nint heTarget, nint he, nint reason, SciterValue data, string name)
     {
+        //Console.WriteLine($"[Sciter Debug] Пришло событие cmd: {(int)cmd} ({cmd}), name: {name}");
+        if ((int)cmd == 193) // DOCUMENT_CLOSE_REQUEST
+        {
+            Environment.Exit(0);
+        }
+
         if ((int)cmd == 0)
         {
             try

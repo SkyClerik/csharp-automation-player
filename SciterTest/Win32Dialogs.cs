@@ -1,5 +1,4 @@
-﻿using System;
-using System.Runtime.InteropServices;
+﻿using System.Runtime.InteropServices;
 using System.Text;
 
 public static class Win32Dialogs
@@ -23,7 +22,7 @@ public static class Win32Dialogs
         public int nMaxFileTitle = 0;
         public string lpstrInitialDir = null!;
         public string lpstrTitle = null!;
-        public int Flags = 0x00080000 | 0x00001000 | 0x00000800; // OFN_EXPLORER | OFN_FILEMUSTEXIST
+        public int Flags = 0x00080000 | 0x00001000 | 0x00000800;
         public short nFileOffset = 0;
         public short nFileExtension = 0;
         public string lpstrDefExt = null!;
@@ -47,13 +46,11 @@ public static class Win32Dialogs
 
     public static string GetFolderDialog(nint owner, string title)
     {
-        // Для выбора папок в чистом Win32 без сторонних UI-библиотек (WPF/WinForms)
-        // используем трюк с флагом OFN_NOVALIDATE / выбор папки.
         var ofn = new OpenFileName
         {
             hwndOwner = owner,
             lpstrTitle = title,
-            Flags = 0x00080000 | 0x00000020 // OFN_EXPLORER | OFN_ENABLEHOOK (или кастомный флаг папки)
+            Flags = 0x00080000 | 0x00000020
         };
         ofn.lpstrFilter = "Папки\0\n\0";
         return GetOpenFileName(ofn) ? Path.GetDirectoryName(ofn.lpstrFile.ToString()) ?? string.Empty : string.Empty;
