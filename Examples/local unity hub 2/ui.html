@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Crossplatform Drag and Drop</title>
+    <style>
+        body { background: #2d2d2d; color: #fff; font-family: system-ui, sans-serif; padding: 20px; margin: 0; }
+        h2 { margin-top: 0; color: #f0f0f0; }
+        
+        .button-container { display: flex; justify-content: flex-end; gap: 10px; margin-top: 15px; }
+        button { padding: 10px 20px; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; }
+        #btn-select { background: #3f3e46; }
+        #btn-launch { background: #00adb5; }
+        #btn-launch:hover { background: #008f96; }
+        #btn-clear { background: #393e46; }
+        
+        .project-item { padding: 8px; border-bottom: 1px solid #2d2d2d; }
+        .name { font-weight: bold; font-size: 14px; color: #fff; }
+        .path { font-size: 11px; color: #888; }
+        .version { font-size: 12px; color: #4ec9b0; margin-top: 2px; }
+    </style>
+</head>
+<body>
+
+    <h2>My Local Unity Hub</h2>
+
+    <!-- Зона сброса из вашего рабочего примера -->
+    <div id="drop-zone" style="behavior: file-drop; display: block; width: 100%; height: 100px; text-align: center; border: 2px dashed #00adb5; line-height: 100px;">
+        Перетащите папку сюда
+    </div>
+    
+    <input type="text" id="folder-path" readonly value="Ожидание папки..." />
+    
+    <!-- Кнопка связи присутствует в HTML, но C# её больше не перехватывает -->
+    <button id="hidden-init-btn" style="display:none;"></button>
+    
+    <!-- Сюда выводится список сохраненных проектов из кэша -->
+    <div id="files-list">Здесь появится список файлов...</div>
+
+    <div class="button-container">
+        <button id="btn-clear">❌ Очистить кэш</button>
+        <button id="btn-select">📂 Выбрать через проводник</button>
+        <button id="btn-launch">🚀 ЗАПУСТИТЬ ВЫБРАННЫЙ</button>
+    </div>
+
+    <script type="module">
+        const dropZone = document.getElementById("drop-zone");
+
+        document.on("exchangeenter", "#drop-zone", function(evt) {
+            if (evt.detail && evt.detail.types && evt.detail.types.includes("file")) {
+                evt.detail.capabilities = "copy";
+                return true;
+            }
+        });
+
+        document.on("exchangemotion", "#drop-zone", function(evt) {
+            evt.detail.capabilities = "copy";
+            return true;
+        });
+
+        document.on("exchangedrop", "#drop-zone", function(evt) {
+            if (evt.detail && evt.detail.data && evt.detail.data.file) {
+                let paths = evt.detail.data.file;
+                dropZone.value = Array.isArray(paths) ? paths : paths;
+                return true;
+            }
+        });
+    </script>
+</body>
+</html>
