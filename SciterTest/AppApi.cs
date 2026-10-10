@@ -96,7 +96,22 @@ public class AppApi
         }
     }
 
-
+    public void RunProcess(string filename, string arguments)
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = filename,
+                Arguments = arguments,
+                UseShellExecute = true
+            });
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Player Error] Сбой запуска процесса {filename} с аргументами {arguments}: {ex.Message}");
+        }
+    }
 
     public Dictionary<string, Action<string>> DragDropActions { get; } = new();
 
