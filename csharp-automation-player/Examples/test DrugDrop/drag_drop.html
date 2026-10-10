@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Crossplatform Drag and Drop</title>
+</head>
+<body>
+
+    <!-- Зона сброса со встроенным в ядро Sciter поведением file-drop -->
+    <div id="drop-zone" style="behavior: file-drop; display: block; width: 100%; height: 100px; text-align: center; border: 2px dashed #00adb5;">
+        Перетащите папку сюда
+    </div>
+    
+    <input type="text" id="folder-path" readonly value="Ожидание папки..." />
+    
+    <!-- Невидимая кнопка связи, необходимая C# ядру для синхронизации оконных потоков -->
+    <button id="hidden-init-btn" style="display:none;"></button>
+    
+    <div id="files-list">Здесь появится список файлов...</div>
+
+    <script type="module">
+        const dropZone = document.getElementById("drop-zone");
+
+        // Этот блок кода выполнится на Linux и разблокирует системный курсор мыши
+        document.on("exchangeenter", "#drop-zone", function(evt) {
+            if (evt.detail && evt.detail.types && evt.detail.types.includes("file")) {
+                evt.detail.capabilities = "copy"; // Включает плюс у курсора на Linux
+                return true;
+            }
+        });
+
+        document.on("exchangemotion", "#drop-zone", function(evt) {
+            evt.detail.capabilities = "copy";
+            return true;
+        });
+
+        document.on("exchangedrop", "#drop-zone", function(evt) {
+            if (evt.detail && evt.detail.data && evt.detail.data.file) {
+                let paths = evt.detail.data.file;
+                dropZone.value = Array.isArray(paths) ? paths : paths;
+                return true;
+            }
+        });
+    </script>
+</body>
+</html>
